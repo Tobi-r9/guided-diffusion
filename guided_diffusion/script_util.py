@@ -154,6 +154,8 @@ def create_model(
             channel_mult = (1, 1, 2, 3, 4)
         elif image_size == 64:
             channel_mult = (1, 2, 3, 4)
+        elif image_size == 28:
+            channel_mult = (1, 2, 3)
         else:
             raise ValueError(f"unsupported image size: {image_size}")
     else:
@@ -165,9 +167,9 @@ def create_model(
 
     return UNetModel(
         image_size=image_size,
-        in_channels=3,
+        in_channels=1,
         model_channels=num_channels,
-        out_channels=(3 if not learn_sigma else 6),
+        out_channels=(1 if not learn_sigma else 2),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),
         dropout=dropout,
@@ -356,6 +358,8 @@ def sr_create_model(
         channel_mult = (1, 1, 2, 2, 4, 4)
     elif large_size == 64:
         channel_mult = (1, 2, 3, 4)
+    elif large_size == 28:
+        channel_mult = (1, 2, 3)
     else:
         raise ValueError(f"unsupported large size: {large_size}")
 
@@ -365,9 +369,9 @@ def sr_create_model(
 
     return SuperResModel(
         image_size=large_size,
-        in_channels=3,
+        in_channels=1,
         model_channels=num_channels,
-        out_channels=(3 if not learn_sigma else 6),
+        out_channels=(1 if not learn_sigma else 2),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),
         dropout=dropout,
