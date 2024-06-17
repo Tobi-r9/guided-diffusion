@@ -1,8 +1,9 @@
 import math
 import random
+import zipfile
+import os
 
 from PIL import Image
-import blobfile as bf
 from mpi4py import MPI
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
@@ -26,7 +27,7 @@ def load_data(
     The kwargs dict can be used for class labels, in which case the key is "y"
     and the values are integer tensors of class labels.
 
-    :param data_dir: a dataset directory.
+    :param data_dir: path to .zip file which contains dataset.
     :param batch_size: the batch size of each returned pair.
     :param image_size: the size to which images are resized.
     :param class_cond: if True, include a "y" key in returned dicts for class
@@ -38,17 +39,19 @@ def load_data(
     """
     if not data_dir:
         raise ValueError("unspecified data directory")
-    all_files = _list_image_files_recursively(data_dir)
+    _zipfile = zipfile.ZipFile(data_dir)
+    all_files = _list_image_files(_zipfile)
     classes = None
     if class_cond:
         # Assume classes are the first part of the filename,
         # before an underscore.
-        class_names = [bf.basename(path).split("_")[0] for path in all_files]
+        class_names = [os.path.basename(path).split("_")[0] for path in all_files]
         sorted_classes = {x: i for i, x in enumerate(sorted(set(class_names)))}
         classes = [sorted_classes[x] for x in class_names]
     dataset = ImageDataset(
         image_size,
         all_files,
+        _zipfile,
         classes=classes,
         shard=MPI.COMM_WORLD.Get_rank(),
         num_shards=MPI.COMM_WORLD.Get_size(),
@@ -67,15 +70,15 @@ def load_data(
         yield from loader
 
 
-def _list_image_files_recursively(data_dir):
+def _list_image_files(_zipfile):
     results = []
-    for entry in sorted(bf.listdir(data_dir)):
-        full_path = bf.join(data_dir, entry)
+    fnames = _zipfile.namelist()
+    for entry in sorted(fnames):
         ext = entry.split(".")[-1]
         if "." in entry and ext.lower() in ["jpg", "jpeg", "png", "gif"]:
-            results.append(full_path)
-        elif bf.isdir(full_path):
-            results.extend(_list_image_files_recursively(full_path))
+            results.append(entry)
+        else:
+            continue
     return results
 
 
@@ -84,6 +87,7 @@ class ImageDataset(Dataset):
         self,
         resolution,
         image_paths,
+        _zipfile,
         classes=None,
         shard=0,
         num_shards=1,
@@ -96,16 +100,18 @@ class ImageDataset(Dataset):
         self.local_classes = None if classes is None else classes[shard:][::num_shards]
         self.random_crop = random_crop
         self.random_flip = random_flip
+        self._zipfile = _zipfile
 
     def __len__(self):
         return len(self.local_images)
 
     def __getitem__(self, idx):
         path = self.local_images[idx]
-        with bf.BlobFile(path, "rb") as f:
+        with self._zipfile.open(path, "r") as f:
             pil_image = Image.open(f)
             pil_image.load()
-        pil_image = pil_image.convert("RGB")
+
+        pil_image = pil_image.convert("L")
 
         if self.random_crop:
             arr = random_crop_arr(pil_image, self.resolution)
@@ -120,7 +126,7 @@ class ImageDataset(Dataset):
         out_dict = {}
         if self.local_classes is not None:
             out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
-        return np.transpose(arr, [2, 0, 1]), out_dict
+        return np.expand_dims(arr, axis=0), out_dict
 
 
 def center_crop_arr(pil_image, image_size):
