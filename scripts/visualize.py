@@ -1,26 +1,27 @@
 import numpy as np
 from PIL import Image
 import os
+from argparse import ArgumentParser
 
-# Load the .npz file
-data = np.load('/proj/berzelius-2021-89/users/x_tohop/guided-diffusion/samples/test/samples_10x28x28x1.npz')
+def main(path):
+    data = np.load(path)
+    output_dir = os.path.dirname(path)
+    images = data['arr_0']
 
-# Extract the array of images
-images = data['arr_0']  # Adjust the key if it's different
+    for i in range(images.shape[0]):
 
-# Ensure output directory exists
-output_dir = 'output_images'
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+        img = images[i, :, :, 0]
+        img = Image.fromarray(img, 'L')
+        img.save(os.path.join(output_dir, f'sample_{i}.png'))
 
-# Save each image as a .png file
-for i in range(images.shape[0]):
-    # Remove the single color channel dimension
-    img = images[i, :, :, 0]
-    
-    img = Image.fromarray(img, 'L')
-    img.save(os.path.join(output_dir, f'sample_{i}.png'))
+    print(f'Saved {images.shape[0]} images to the {output_dir} directory.')
 
-print(f'Saved {images.shape[0]} images to the {output_dir} directory.')
+if __name__=="__main__":
+
+    parser = ArgumentParser()
+    parser.add_argument("--path", type=str, help="path to the .npz file, where the .png files will be stored")
+    args = parser.parse_args()
+
+    main(**vars(args))
 
 
